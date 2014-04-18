@@ -59,26 +59,31 @@ class Connection(object):
             else:
                 callback()
 
-    def connect(self):
+    def connect(self, callback=None):
         if not self._stream:
             try:
                 if self.unix_socket_path:
                     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                    sock.settimeout(self.timeout)
-                    sock.connect(self.unix_socket_path)
+                    endpoint = self.unix_socket_path
                 else:
                     sock = socket.create_connection(
                         (self.host, self.port),
                         timeout=self.timeout
                     )
                     sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
+                    endpoint = (self.host, self.port)
+                sock.settimeout(self.timeout)
                 self._stream = IOStream(sock, io_loop=self._io_loop)
-                self._stream.set_close_callback(self.on_stream_close)
-                self.info['db'] = 0
-                self.info['pass'] = None
+                self._stream.connect(endpoint, partial(self._on_connect, callback))
             except socket.error as e:
                 raise ConnectionError(str(e))
-            self.fire_event('on_connect')
+
+    def _on_connect(self, callback):
+        self.info['db'] = 0
+        self.info['pass'] = None
+        self._stream.set_close_callback(self.on_stream_close)
+        callback()
+        self.fire_event('on_connect')
 
     def on_stream_close(self):
         if self._stream:
